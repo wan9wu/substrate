@@ -153,6 +153,12 @@ benchmarks! {
     _ {
     }
 
+    // Benchmarks for the dispatchables of the pallet.
+    //
+    // We just benchmark every dispatchable as its worst case given the respective input.
+    // By doing this we can use these results in the weight annotation without pulling
+    // the `Schedule` from storage.
+
     // This extrinsic is pretty much constant as it is only a simple setter.
     update_schedule {
         let schedule = Schedule {
@@ -248,6 +254,39 @@ benchmarks! {
             T::Currency::free_balance(&instance.caller),
         );
     }
+
+    // Benchmarks for functions callable by contracts.
+    //
+    // We benchmark every imported function (ext_*) individually by calling a contract
+    // that only contains a call to this function. In order to determine the weight for the
+    // actual execution time of the imported function (which happens outside of the contract)
+    // we supply another benchmark for each imported function: This benchmark calls a contract
+    // that does all the necessary setup in order to call the imported function but then does
+    // not call it. The setup includes reading input data and pushing arguments to the stack.
+    // Later, when seeding the `Schedule` we can substract the weight of this baseline version
+    // in order to get the weight for just the function call.
+
+    ext_gas {
+        let instance = instantiate_raw_contract("caller", load_module!("ext_gas")?, vec![])?;
+        let origin = RawOrigin::Signed(instance.caller.clone());
+    }: call(
+        origin,
+        instance.addr,
+        0.into(),
+        Weight::max_value(),
+        vec![]
+    )
+
+    ext_gas_baseline {
+        let instance = instantiate_raw_contract("caller", load_module!("ext_gas_baseline")?, vec![])?;
+        let origin = RawOrigin::Signed(instance.caller.clone());
+    }: call(
+        origin,
+        instance.addr,
+        0.into(),
+        Weight::max_value(),
+        vec![]
+    )
 }
 
 #[cfg(test)]
@@ -288,6 +327,20 @@ mod tests {
     fn claim_surcharge() {
 		ExtBuilder::default().build().execute_with(|| {
 			assert_ok!(test_benchmark_claim_surcharge::<Test>());
+		});
+    }
+
+    #[test]
+    fn ext_gas() {
+		ExtBuilder::default().build().execute_with(|| {
+			assert_ok!(test_benchmark_ext_gas::<Test>());
+		});
+    }
+
+    #[test]
+    fn ext_gas_baseline() {
+		ExtBuilder::default().build().execute_with(|| {
+			assert_ok!(test_benchmark_ext_gas_baseline::<Test>());
 		});
     }
 }
