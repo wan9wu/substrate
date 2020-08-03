@@ -138,8 +138,7 @@ benchmarks! {
         let endowment = Config::<T>::subsistence_threshold_uncached();
         let caller = create_funded_user::<T>("caller", 0);
         let (binary, hash) = load_module!("dummy");
-        Contracts::<T>::put_code(RawOrigin::Signed(caller.clone()).into(), binary.to_vec())
-            .unwrap();
+        Contracts::<T>::put_code(RawOrigin::Signed(caller.clone()).into(), binary.to_vec())?;
 
     }: _(
             RawOrigin::Signed(caller.clone()),
@@ -164,15 +163,14 @@ benchmarks! {
         let caller = create_funded_user::<T>("caller", 0);
         let (binary, hash) = load_module!("dummy");
         let addr = T::DetermineContractAddress::contract_address_for(&hash, &[], &caller);
-        Contracts::<T>::put_code(RawOrigin::Signed(caller.clone()).into(), binary.to_vec())
-            .unwrap();
+        Contracts::<T>::put_code(RawOrigin::Signed(caller.clone()).into(), binary.to_vec())?;
         Contracts::<T>::instantiate(
             RawOrigin::Signed(caller.clone()).into(),
             endowment,
             Weight::max_value(),
             hash,
             vec![],
-        ).unwrap();
+        )?;
     }: _(
             RawOrigin::Signed(caller.clone()),
             T::Lookup::unlookup(addr),
@@ -199,18 +197,18 @@ benchmarks! {
         let caller = create_funded_user::<T>("caller", 0);
         let (binary, hash) = load_module!("dummy");
         let addr = T::DetermineContractAddress::contract_address_for(&hash, &[], &caller);
-        Contracts::<T>::put_code(RawOrigin::Signed(caller.clone()).into(), binary.to_vec())
-            .unwrap();
+        Contracts::<T>::put_code(RawOrigin::Signed(caller.clone()).into(), binary.to_vec())?;
         Contracts::<T>::instantiate(
             RawOrigin::Signed(caller.clone()).into(),
             endowment,
             Weight::max_value(),
             hash,
             vec![],
-        ).unwrap();
+        )?;
 
         // instantiate should leave us with an alive contract
-        ContractInfoOf::<T>::get(addr.clone()).unwrap().get_alive().unwrap();
+        ContractInfoOf::<T>::get(addr.clone()).and_then(|c| c.get_alive())
+            .ok_or("Instantiate must return an alive contract.")?;
 
         // generate some rent
         advance_block::<T>(<T as Trait>::SignedClaimHandicap::get() + 1.into());
@@ -218,7 +216,8 @@ benchmarks! {
     }: _(RawOrigin::Signed(caller.clone()), addr.clone(), None)
     verify {
         // the claim surcharge should have evicted the contract
-        ContractInfoOf::<T>::get(addr.clone()).unwrap().get_tombstone().unwrap();
+        ContractInfoOf::<T>::get(addr.clone()).and_then(|c| c.get_tombstone())
+            .ok_or("The claim surcharge should have exicted the contract.")?;
 
         // the caller should get the reward for being a good snitch
         assert_eq!(
